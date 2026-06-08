@@ -7,8 +7,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,12 +31,14 @@ class MainActivity : ComponentActivity() {
     private val ttsManager by lazy { TtsManager(this) }
     private var tagId by mutableStateOf<String?>(null)
     private var errorMsg by mutableStateOf<String?>(null)
+    private var ttsStatus by mutableStateOf("正在初始化 TTS 引擎…")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // 初始化 TTS 引擎
+        // 初始化 TTS 引擎，监听状态变化
+        ttsManager.onStatusChanged = { status -> ttsStatus = status }
         ttsManager.init()
 
         try {
@@ -49,8 +54,10 @@ class MainActivity : ComponentActivity() {
                     NfcScreen(
                         tagId = tagId,
                         errorMsg = errorMsg,
+                        ttsStatus = ttsStatus,
                         isNfcSupported = try { nfcReader.isSupported } catch (_: Exception) { false },
                         isNfcEnabled = try { nfcReader.isEnabled } catch (_: Exception) { false },
+                        onOpenTtsSettings = { ttsManager.openTtsSettings() },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -99,8 +106,10 @@ class MainActivity : ComponentActivity() {
 fun NfcScreen(
     tagId: String?,
     errorMsg: String?,
+    ttsStatus: String,
     isNfcSupported: Boolean,
     isNfcEnabled: Boolean,
+    onOpenTtsSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -108,7 +117,7 @@ fun NfcScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 优先显示错误（帮助排查闪退原因）
+        // 优先显示错误
         if (errorMsg != null) {
             Text("⚠️ 发生异常", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.Red)
             Text(
@@ -142,6 +151,24 @@ fun NfcScreen(
                         modifier = Modifier.padding(top = 16.dp)
                     )
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // TTS 状态指示
+        val statusColor = when {
+            ttsStatus.contains("就绪") -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
+            ttsStatus.contains("失败") || ttsStatus.contains("缺失") -> androidx.compose.ui.graphics.Color.Red
+            else -> androidx.compose.ui.graphics.Color.Gray
+        }
+        Text("🔊 TTS: $ttsStatus", fontSize = 12.sp, color = statusColor)
+
+        // TTS 异常时显示设置按钮
+        if (ttsStatus.contains("失败") || ttsStatus.contains("缺失")) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(onClick = onOpenTtsSettings) {
+                Text("打开 TTS 设置", fontSize = 14.sp)
             }
         }
     }
