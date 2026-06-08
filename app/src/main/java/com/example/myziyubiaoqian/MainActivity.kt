@@ -25,12 +25,16 @@ import com.example.myziyubiaoqian.ui.theme.MyZiyubiaoqianTheme
 class MainActivity : ComponentActivity() {
 
     private val nfcReader by lazy { NfcReader(this) }
+    private val ttsManager by lazy { TtsManager(this) }
     private var tagId by mutableStateOf<String?>(null)
     private var errorMsg by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // 初始化 TTS 引擎
+        ttsManager.init()
 
         try {
             // 处理从 NFC 标签启动的 Intent
@@ -79,8 +83,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        ttsManager.shutdown()
+    }
+
     private fun updateTagDisplay(tagInfo: NfcTagInfo) {
         tagId = "ID: ${tagInfo.id}\n技术: ${tagInfo.techList.joinToString(", ")}"
+        // 语音播报标签 ID
+        ttsManager.speakTagId(tagInfo.id)
     }
 }
 
