@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +69,8 @@ class MainActivity : ComponentActivity() {
     private var errorMsg by mutableStateOf<String?>(null)
     private var ttsStatus by mutableStateOf("正在初始化 TTS 引擎…")
     private var allItems by mutableStateOf<List<Item>>(emptyList())
+    private var simulateIndex by mutableIntStateOf(0)  // 模拟触碰：依次循环demo标签
+    private var simulateLabel by mutableStateOf<String?>(null)  // 上一轮模拟的物品名
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,6 +107,8 @@ class MainActivity : ComponentActivity() {
                     isNfcEnabled = try { nfcReader.isEnabled } catch (_: Exception) { false },
                     onOpenTtsSettings = { ttsManager.openTtsSettings() },
                     onSpeakItem = { item -> ttsManager.speakItemDescription(item) },
+                    onSimulateTag = { simulateLabel = onSimulateTag() },
+                    simulateLabel = simulateLabel,
                 )
             }
         }
@@ -149,6 +154,17 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /** 模拟触碰——循环使用4个demo标签ID，无需硬件即可测试 */
+    private fun onSimulateTag(): String {
+        val demoIds = arrayOf("04A2F8B3", "A1B2C3D4", "E5F6G7H8", "11223344")
+        val demoLabels = arrayOf("药盒", "水杯", "遥控器", "家门钥匙")
+        val id = demoIds[simulateIndex % demoIds.size]
+        val label = demoLabels[simulateIndex % demoIds.size]
+        simulateIndex++
+        onTagScanned(NfcTagInfo(id, listOf("android.nfc.tech.NfcA")))
+        return label  // 返回模拟的物品名，UI可显示
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -170,6 +186,8 @@ private fun MainScreen(
     isNfcEnabled: Boolean,
     onOpenTtsSettings: () -> Unit,
     onSpeakItem: (Item) -> Unit,
+    onSimulateTag: () -> Unit,
+    simulateLabel: String?,
 ) {
     val tabs = listOf("🏷️ 扫描", "📋 物品")
 
@@ -204,6 +222,8 @@ private fun MainScreen(
                     isNfcSupported = isNfcSupported,
                     isNfcEnabled = isNfcEnabled,
                     onOpenTtsSettings = onOpenTtsSettings,
+                    onSimulateTag = onSimulateTag,
+                    simulateLabel = simulateLabel,
                 )
                 1 -> ItemsTab(
                     items = allItems,
@@ -226,6 +246,8 @@ private fun ScanTab(
     isNfcSupported: Boolean,
     isNfcEnabled: Boolean,
     onOpenTtsSettings: () -> Unit,
+    onSimulateTag: () -> Unit,
+    simulateLabel: String?,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -266,6 +288,27 @@ private fun ScanTab(
 
         // TTS 状态
         TtsStatusBar(ttsStatus, onOpenTtsSettings)
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // 模拟触碰按钮（无需NFC硬件即可测试）
+        if (simulateLabel != null) {
+            Text(
+                "上一轮模拟：$simulateLabel ✅",
+                fontSize = 13.sp,
+                color = Color(0xFF4CAF50)
+            )
+        } else {
+            Text(
+                "无需硬件即可测试，点击按钮模拟触碰",
+                fontSize = 13.sp,
+                color = Color.Gray
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(onClick = onSimulateTag) {
+            Text("🧪 模拟触碰", fontSize = 16.sp)
+        }
     }
 }
 
