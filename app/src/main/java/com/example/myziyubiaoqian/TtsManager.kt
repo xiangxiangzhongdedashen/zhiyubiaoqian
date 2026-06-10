@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.util.Log
+import com.example.myziyubiaoqian.data.Item
 import java.util.Locale
 
 class TtsManager(context: Context) {
@@ -169,6 +170,18 @@ class TtsManager(context: Context) {
     fun speakTagId(tagId: String) {
         val hex = tagId.uppercase(Locale.ROOT).toCharArray().joinToString(" ")
         speak("读取到标签，编号：$hex")
+    }
+
+    /** 播报已注册物品的解说词 */
+    fun speakItemDescription(item: Item) {
+        val locPart = if (!item.location.isNullOrBlank()) "，放在${item.location}" else ""
+        speak("${item.name}$locPart。${item.description}")
+    }
+
+    /** 播报未注册标签的提示 */
+    fun speakUnknownTag(tagId: String) {
+        val hex = tagId.uppercase(Locale.ROOT).toCharArray().joinToString(" ")
+        speak("未注册的标签，编号：$hex")
     }
 
     fun speak(text: String) {
