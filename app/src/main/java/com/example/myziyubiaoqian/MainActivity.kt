@@ -19,12 +19,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -69,8 +71,12 @@ class MainActivity : ComponentActivity() {
     private var errorMsg by mutableStateOf<String?>(null)
     private var ttsStatus by mutableStateOf("正在初始化 TTS 引擎…")
     private var allItems by mutableStateOf<List<Item>>(emptyList())
-    private var simulateIndex by mutableIntStateOf(0)  // 模拟触碰：依次循环demo标签
-    private var simulateLabel by mutableStateOf<String?>(null)  // 上一轮模拟的物品名
+    // 编辑弹窗状态
+    private var showEditDialog by mutableStateOf(false)
+    private var editTagId by mutableStateOf("")
+    private var editName by mutableStateOf("")
+    private var editDescription by mutableStateOf("")
+    private var editIsNew by mutableStateOf(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -107,8 +113,22 @@ class MainActivity : ComponentActivity() {
                     isNfcEnabled = try { nfcReader.isEnabled } catch (_: Exception) { false },
                     onOpenTtsSettings = { ttsManager.openTtsSettings() },
                     onSpeakItem = { item -> ttsManager.speakItemDescription(item) },
-                    onSimulateTag = { simulateLabel = onSimulateTag() },
-                    simulateLabel = simulateLabel,
+                    onStartEdit = { tagId, name, desc, isNew ->
+                        editTagId = tagId
+                        editName = name
+                        editDescription = desc
+                        editIsNew = isNew
+                        showEditDialog = true
+                    },
+                    showEditDialog = showEditDialog,
+                    editTagId = editTagId,
+                    editName = editName,
+                    editDescription = editDescription,
+                    editIsNew = editIsNew,
+                    onEditNameChange = { editName = it },
+                    onEditDescChange = { editDescription = it },
+                    onSaveEdit = { saveEdit() },
+                    onCancelEdit = { showEditDialog = false },
                 )
             }
         }
@@ -155,15 +175,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** 模拟触碰——循环使用4个demo标签ID，无需硬件即可测试 */
-    private fun onSimulateTag(): String {
-        val demoIds = arrayOf("04A2F8B3", "A1B2C3D4", "E5F6G7H8", "11223344")
-        val demoLabels = arrayOf("药盒", "水杯", "遥控器", "家门钥匙")
-        val id = demoIds[simulateIndex % demoIds.size]
-        val label = demoLabels[simulateIndex % demoIds.size]
-        simulateIndex++
-        onTagScanned(NfcTagInfo(id, listOf("android.nfc.tech.NfcA")))
-        return label  // 返回模拟的物品名，UI可显示
+    /** 保存编辑/注册 → 写入数据库 → 刷新界面 */
+    private fun saveEdit() {
+        lifecycleScope.launch {
+            val now = System.currentTimeMillis()
+            val existing = repository.getByTagIdOnce(editTagId)
+            val item = Item(
+                tagId = editTagId,
+                name = editName,
+                description = editDescription,
+                location = existing?.location,
+                category = existing?.category,
+                createdAt = existing?.createdAt ?: now,
+                updatedAt = now,
+                syncVersion = (existing?.syncVersion ?: 0) + 1,
+            )
+            repository.upsert(item)
+            // 刷新当前显示
+            lastScannedItem = item
+            isUnknownTag = false
+            ttsManager.speakItemDescription(item)
+            showEditDialog = false
+        }
     }
 }
 
@@ -186,8 +219,16 @@ private fun MainScreen(
     isNfcEnabled: Boolean,
     onOpenTtsSettings: () -> Unit,
     onSpeakItem: (Item) -> Unit,
-    onSimulateTag: () -> Unit,
-    simulateLabel: String?,
+    onStartEdit: (tagId: String, name: String, desc: String, isNew: Boolean) -> Unit,
+    showEditDialog: Boolean,
+    editTagId: String,
+    editName: String,
+    editDescription: String,
+    editIsNew: Boolean,
+    onEditNameChange: (String) -> Unit,
+    onEditDescChange: (String) -> Unit,
+    onSaveEdit: () -> Unit,
+    onCancelEdit: () -> Unit,
 ) {
     val tabs = listOf("🏷️ 扫描", "📋 物品")
 
@@ -222,12 +263,24 @@ private fun MainScreen(
                     isNfcSupported = isNfcSupported,
                     isNfcEnabled = isNfcEnabled,
                     onOpenTtsSettings = onOpenTtsSettings,
-                    onSimulateTag = onSimulateTag,
-                    simulateLabel = simulateLabel,
+                    onStartEdit = onStartEdit,
                 )
                 1 -> ItemsTab(
                     items = allItems,
                     onSpeakItem = onSpeakItem,
+                )
+            }
+            // 编辑弹窗（独立于标签页，覆盖显示）
+            if (showEditDialog) {
+                EditDialog(
+                    tagId = editTagId,
+                    name = editName,
+                    description = editDescription,
+                    isNew = editIsNew,
+                    onNameChange = onEditNameChange,
+                    onDescChange = onEditDescChange,
+                    onSave = onSaveEdit,
+                    onCancel = onCancelEdit,
                 )
             }
         }
@@ -246,8 +299,7 @@ private fun ScanTab(
     isNfcSupported: Boolean,
     isNfcEnabled: Boolean,
     onOpenTtsSettings: () -> Unit,
-    onSimulateTag: () -> Unit,
-    simulateLabel: String?,
+    onStartEdit: (tagId: String, name: String, desc: String, isNew: Boolean) -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -289,25 +341,23 @@ private fun ScanTab(
         // TTS 状态
         TtsStatusBar(ttsStatus, onOpenTtsSettings)
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // 模拟触碰按钮（无需NFC硬件即可测试）
-        if (simulateLabel != null) {
-            Text(
-                "上一轮模拟：$simulateLabel ✅",
-                fontSize = 13.sp,
-                color = Color(0xFF4CAF50)
-            )
-        } else {
-            Text(
-                "无需硬件即可测试，点击按钮模拟触碰",
-                fontSize = 13.sp,
-                color = Color.Gray
-            )
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedButton(onClick = onSimulateTag) {
-            Text("🧪 模拟触碰", fontSize = 16.sp)
+        // 注册/编辑按钮（触碰标签后显示）
+        if (tagId != null) {
+            Spacer(modifier = Modifier.height(24.dp))
+            if (lastScannedItem != null) {
+                OutlinedButton(onClick = {
+                    val item = lastScannedItem!!
+                    onStartEdit(item.tagId, item.name, item.description, false)
+                }) {
+                    Text("✏️ 编辑解说词", fontSize = 16.sp)
+                }
+            } else if (isUnknownTag) {
+                Button(onClick = {
+                    onStartEdit(tagId, "", "", true)
+                }) {
+                    Text("➕ 注册此标签", fontSize = 16.sp)
+                }
+            }
         }
     }
 }
@@ -455,6 +505,60 @@ private fun ItemListItem(item: Item, onClick: () -> Unit) {
             }
         }
     }
+}
+
+// ── 编辑弹窗 ──
+
+@Composable
+private fun EditDialog(
+    tagId: String,
+    name: String,
+    description: String,
+    isNew: Boolean,
+    onNameChange: (String) -> Unit,
+    onDescChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(if (isNew) "注册 NFC 标签" else "编辑解说词", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+        text = {
+            Column {
+                Text("标签 ID: $tagId", fontSize = 13.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = onNameChange,
+                    label = { Text("物品名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = onDescChange,
+                    label = { Text("解说词（触碰后朗读的内容）") },
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onSave,
+                enabled = name.isNotBlank() && description.isNotBlank()  // 名称和内容必填
+            ) {
+                Text("保存", fontSize = 16.sp)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onCancel) {
+                Text("取消", fontSize = 16.sp)
+            }
+        }
+    )
 }
 
 // ── 小工具 ──

@@ -20,9 +20,9 @@ class ItemRepository(private val dao: ItemDao) {
     /** 按标签 ID 一次性查询（NFC 触碰时使用） */
     suspend fun getByTagIdOnce(tagId: String): Item? = dao.getByTagIdOnce(tagId)
 
-    // ── 写操作 —— 当前仅供内部预置数据使用，未来云端同步层会调用 ──
+    // ── 写操作 —— 当前用于标签注册/编辑，未来云端同步层也会调用 ──
 
-    internal suspend fun upsert(item: Item) = dao.upsert(item)
-    internal suspend fun upsertAll(items: List<Item>) = dao.upsertAll(items)
-    internal suspend fun delete(item: Item) = dao.delete(item)
+    suspend fun upsert(item: Item) = dao.upsert(item)
+    suspend fun upsertAll(items: List<Item>) = dao.upsertAll(items)
+    suspend fun delete(item: Item) = dao.delete(item)
 }
