@@ -1,5 +1,6 @@
 package com.example.myziyubiaoqian
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -38,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,7 +58,6 @@ import com.example.myziyubiaoqian.network.ApiClient
 import com.example.myziyubiaoqian.ui.theme.MyZiyubiaoqianTheme
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -80,6 +81,9 @@ class MainActivity : ComponentActivity() {
     private var editTagId by mutableStateOf("")
     private var editName by mutableStateOf("")
     private var editDescription by mutableStateOf("")
+    // 服务器地址（SharedPreferences 持久化，切换标签页不丢失）
+    private val prefs by lazy { getSharedPreferences("server", Context.MODE_PRIVATE) }
+    private var serverUrl by mutableStateOf("")
     private var editIsNew by mutableStateOf(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,6 +105,9 @@ class MainActivity : ComponentActivity() {
         try {
             nfcReader.handleIntent(intent)?.let { onTagScanned(it) }
         } catch (_: Exception) { }
+
+        // 从 SharedPreferences 恢复服务器地址
+        serverUrl = prefs.getString("url", "")!!
 
         setContent {
             MyZiyubiaoqianTheme {
@@ -133,6 +140,11 @@ class MainActivity : ComponentActivity() {
                     onEditDescChange = { editDescription = it },
                     onSaveEdit = { saveEdit() },
                     onCancelEdit = { showEditDialog = false },
+                    serverUrl = serverUrl,
+                    onServerUrlChange = { url ->
+                        serverUrl = url
+                        prefs.edit().putString("url", url).apply()
+                    },
                 )
             }
         }
@@ -233,6 +245,8 @@ private fun MainScreen(
     onEditDescChange: (String) -> Unit,
     onSaveEdit: () -> Unit,
     onCancelEdit: () -> Unit,
+    serverUrl: String,
+    onServerUrlChange: (String) -> Unit,
 ) {
     val tabs = listOf("🏷️ 扫描", "📋 物品", "🌐 服务器")
 
@@ -273,7 +287,7 @@ private fun MainScreen(
                     items = allItems,
                     onSpeakItem = onSpeakItem,
                 )
-                2 -> ServerTab()
+                2 -> ServerTab(serverUrl = serverUrl, onServerUrlChange = onServerUrlChange)
             }
             // 编辑弹窗（独立于标签页，覆盖显示）
             if (showEditDialog) {
@@ -569,10 +583,10 @@ private fun EditDialog(
 // ── 服务器测试标签页 ──
 
 @Composable
-private fun ServerTab() {
-    var serverUrl by remember { mutableStateOf("http://172.17.202.56:8080") }
+private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
     var message by remember { mutableStateOf("点击按钮测试服务器连接") }
     var isLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -582,7 +596,7 @@ private fun ServerTab() {
 
         OutlinedTextField(
             value = serverUrl,
-            onValueChange = { serverUrl = it },
+            onValueChange = onServerUrlChange,
             label = { Text("服务器地址") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -592,12 +606,10 @@ private fun ServerTab() {
             onClick = {
                 isLoading = true
                 message = "测试中…"
-                CoroutineScope(Dispatchers.IO).launch {
+                scope.launch {
                     try {
-                        ApiClient.init(serverUrl)
-                        message = withContext(Dispatchers.IO) {
-                            ApiClient.health()
-                        }
+                        withContext(Dispatchers.IO) { ApiClient.init(serverUrl) }
+                        message = withContext(Dispatchers.IO) { ApiClient.health() }
                     } catch (e: Exception) {
                         message = "连接失败：${e.message}"
                     }
@@ -612,12 +624,10 @@ private fun ServerTab() {
         Button(
             onClick = {
                 isLoading = true
-                CoroutineScope(Dispatchers.IO).launch {
+                scope.launch {
                     try {
-                        ApiClient.init(serverUrl)
-                        val items = withContext(Dispatchers.IO) {
-                            ApiClient.listItems()
-                        }
+                        withContext(Dispatchers.IO) { ApiClient.init(serverUrl) }
+                        val items = withContext(Dispatchers.IO) { ApiClient.listItems() }
                         message = "物品数量：${items.size}\n${items.joinToString("\n") { "${it.name}(${it.tagId})" }}"
                     } catch (e: Exception) {
                         message = "失败：${e.message}"
