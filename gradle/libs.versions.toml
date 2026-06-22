@@ -10,8 +10,15 @@ kotlin = "2.1.20"          # Kotlin 2.2.10降级至2.1.20 — KSP 2.1.20-1.0.31�
 composeBom = "2026.02.01"
 room = "2.7.1"
 kspVersion = "2.1.20-1.0.31"  # KSP版本必须与Kotlin主版本号匹配
+ktor = "3.0.3"             # Ktor HTTP框架
+exposed = "0.55.0"         # Kotlin原生ORM（Exposed DSL）
+mysqlConnector = "9.1.0"   # MySQL JDBC驱动
+hikaricp = "5.1.0"         # 数据库连接池
+logback = "1.5.12"         # SLF4J日志实现
+kotlinxSerialization = "1.7.3"  # Kotlin JSON序列化
 
 [libraries]
+# Android 已有
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
@@ -30,8 +37,30 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 
+# Ktor 服务端
+ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version.ref = "ktor" }
+ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref = "ktor" }
+ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
+
+# Exposed ORM
+exposed-core = { group = "org.jetbrains.exposed", name = "exposed-core", version.ref = "exposed" }
+exposed-dao = { group = "org.jetbrains.exposed", name = "exposed-dao", version.ref = "exposed" }
+exposed-jdbc = { group = "org.jetbrains.exposed", name = "exposed-jdbc", version.ref = "exposed" }
+
+# MySQL + 连接池
+mysql-connector = { group = "com.mysql", name = "mysql-connector-j", version.ref = "mysqlConnector" }
+hikaricp = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikaricp" }
+
+# 日志
+logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
+
+# 序列化
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "kspVersion" }
-
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

@@ -10,6 +10,10 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+    plugins {
+        kotlin("jvm") version "2.1.20"
+        kotlin("plugin.serialization") version "2.1.20"
+    }
 }
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
@@ -24,4 +28,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "my ziyubiaoqian"
 include(":app")
- 
+include(":shared")
+include(":server")
