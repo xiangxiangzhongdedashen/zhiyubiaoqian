@@ -52,9 +52,13 @@ import androidx.lifecycle.lifecycleScope
 import com.example.myziyubiaoqian.data.AppDatabase
 import com.example.myziyubiaoqian.data.Item
 import com.example.myziyubiaoqian.data.ItemRepository
+import com.example.myziyubiaoqian.network.ApiClient
 import com.example.myziyubiaoqian.ui.theme.MyZiyubiaoqianTheme
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -230,7 +234,7 @@ private fun MainScreen(
     onSaveEdit: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
-    val tabs = listOf("🏷️ 扫描", "📋 物品")
+    val tabs = listOf("🏷️ 扫描", "📋 物品", "🌐 服务器")
 
     Scaffold(
         topBar = {
@@ -269,6 +273,7 @@ private fun MainScreen(
                     items = allItems,
                     onSpeakItem = onSpeakItem,
                 )
+                2 -> ServerTab()
             }
             // 编辑弹窗（独立于标签页，覆盖显示）
             if (showEditDialog) {
@@ -559,6 +564,78 @@ private fun EditDialog(
             }
         }
     )
+}
+
+// ── 服务器测试标签页 ──
+
+@Composable
+private fun ServerTab() {
+    var serverUrl by remember { mutableStateOf("http://172.17.202.56:8080") }
+    var message by remember { mutableStateOf("点击按钮测试服务器连接") }
+    var isLoading by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("服务器联调测试", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+
+        OutlinedTextField(
+            value = serverUrl,
+            onValueChange = { serverUrl = it },
+            label = { Text("服务器地址") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        Button(
+            onClick = {
+                isLoading = true
+                message = "测试中…"
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        ApiClient.init(serverUrl)
+                        message = withContext(Dispatchers.IO) {
+                            ApiClient.health()
+                        }
+                    } catch (e: Exception) {
+                        message = "连接失败：${e.message}"
+                    }
+                    isLoading = false
+                }
+            },
+            enabled = !isLoading
+        ) {
+            Text("🏥 检查服务器连接")
+        }
+
+        Button(
+            onClick = {
+                isLoading = true
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        ApiClient.init(serverUrl)
+                        val items = withContext(Dispatchers.IO) {
+                            ApiClient.listItems()
+                        }
+                        message = "物品数量：${items.size}\n${items.joinToString("\n") { "${it.name}(${it.tagId})" }}"
+                    } catch (e: Exception) {
+                        message = "失败：${e.message}"
+                    }
+                    isLoading = false
+                }
+            },
+            enabled = !isLoading
+        ) {
+            Text("📋 获取物品列表")
+        }
+
+        Text(
+            text = message,
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = message },
+            fontSize = 14.sp
+        )
+    }
 }
 
 // ── 小工具 ──
