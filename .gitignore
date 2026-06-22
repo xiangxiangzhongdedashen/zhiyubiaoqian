@@ -15,4 +15,4 @@
 local.properties
 /git/
 部署文件/
-server/build/
+**/build/
