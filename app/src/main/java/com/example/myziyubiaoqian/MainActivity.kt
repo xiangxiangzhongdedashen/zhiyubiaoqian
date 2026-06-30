@@ -65,8 +65,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.builtins.ListSerializer
 
 private const val TAG = "MainActivity"
 
@@ -90,6 +88,9 @@ class MainActivity : ComponentActivity() {
     private var editTagId by mutableStateOf("")
     private var editName by mutableStateOf("")
     private var editDescription by mutableStateOf("")
+    // 服务器页面状态（提升到 Activity 层级，切标签页不丢）
+    private var serverItems by mutableStateOf<List<ItemDto>>(emptyList())
+    private var serverMessage by mutableStateOf("")
     // 服务器地址（SharedPreferences 持久化，切换标签页不丢失）
     private val prefs by lazy { getSharedPreferences("server", Context.MODE_PRIVATE) }
     private var serverUrl by mutableStateOf("")
@@ -156,6 +157,10 @@ class MainActivity : ComponentActivity() {
                         prefs.edit().putString("url", url).apply()
                         if (url.isNotBlank()) ApiClient.init(url)
                     },
+                    serverItems = serverItems,
+                    onServerItemsChange = { serverItems = it },
+                    serverMessage = serverMessage,
+                    onServerMessageChange = { serverMessage = it },
                 )
             }
         }
@@ -306,6 +311,10 @@ private fun MainScreen(
     onCancelEdit: () -> Unit,
     serverUrl: String,
     onServerUrlChange: (String) -> Unit,
+    serverItems: List<ItemDto>,
+    onServerItemsChange: (List<ItemDto>) -> Unit,
+    serverMessage: String,
+    onServerMessageChange: (String) -> Unit,
 ) {
     val tabs = listOf("🏷️ 扫描", "📋 物品", "🌐 服务器")
 
@@ -346,7 +355,14 @@ private fun MainScreen(
                     items = allItems,
                     onSpeakItem = onSpeakItem,
                 )
-                2 -> ServerTab(serverUrl = serverUrl, onServerUrlChange = onServerUrlChange)
+                2 -> ServerTab(
+                    serverUrl = serverUrl,
+                    onServerUrlChange = onServerUrlChange,
+                    serverItems = serverItems,
+                    onServerItemsChange = onServerItemsChange,
+                    serverMessage = serverMessage,
+                    onServerMessageChange = onServerMessageChange,
+                )
             }
             // 编辑弹窗（独立于标签页，覆盖显示）
             if (showEditDialog) {
@@ -658,7 +674,14 @@ private fun EditDialog(
 // ── 服务器管理标签页 ──
 
 @Composable
-private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
+private fun ServerTab(
+    serverUrl: String,
+    onServerUrlChange: (String) -> Unit,
+    serverItems: List<ItemDto>,
+    onServerItemsChange: (List<ItemDto>) -> Unit,
+    serverMessage: String,
+    onServerMessageChange: (String) -> Unit,
+) {
     // ── 地址 + 端口拆分，自动补全 http://，默认端口 8080 ──
     val (initialAddr, initialPort) = parseUrl(serverUrl)
     var localAddress by rememberSaveable { mutableStateOf(initialAddr) }
@@ -677,15 +700,7 @@ private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
         if (fullUrl.isNotBlank()) onServerUrlChange(fullUrl)
     }
 
-    var message by rememberSaveable { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    var serverItemsJson by rememberSaveable { mutableStateOf("") }
-    val serverItems: List<ItemDto> = remember(serverItemsJson) {
-        if (serverItemsJson.isBlank()) emptyList()
-        else try {
-            Json.decodeFromString(ListSerializer(ItemDto.serializer()), serverItemsJson)
-        } catch (_: Exception) { emptyList() }
-    }
     val scope = rememberCoroutineScope()
 
     // 端口编辑弹窗
@@ -702,15 +717,15 @@ private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
     /** 从服务器刷新物品列表 */
     fun refreshItems() {
         isLoading = true
-        message = "加载中…"
+        onServerMessageChange("加载中…")
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { ApiClient.init(fullUrl) }
                 val items = withContext(Dispatchers.IO) { ApiClient.listItems() }
-                serverItemsJson = Json.encodeToString(ListSerializer(ItemDto.serializer()), items)
-                message = "共 ${items.size} 个物品"
+                onServerItemsChange(items)
+                onServerMessageChange("共 ${items.size} 个物品")
             } catch (e: Exception) {
-                message = "获取失败：${e.message}"
+                onServerMessageChange("获取失败：${e.message}")
             }
             isLoading = false
         }
@@ -729,7 +744,7 @@ private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
                 showEditDialog = false
                 refreshItems()
             } catch (e: Exception) {
-                message = "保存失败：${e.message}"
+                onServerMessageChange("保存失败：${e.message}")
             }
         }
     }
@@ -744,7 +759,7 @@ private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
                 }
                 refreshItems()
             } catch (e: Exception) {
-                message = "删除失败：${e.message}"
+                onServerMessageChange("删除失败：${e.message}")
             }
         }
     }
@@ -815,13 +830,13 @@ private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
             Button(
                 onClick = {
                     isLoading = true
-                    message = "测试中…"
+                    onServerMessageChange("测试中…")
                     scope.launch {
                         try {
                             withContext(Dispatchers.IO) { ApiClient.init(fullUrl) }
-                            message = withContext(Dispatchers.IO) { ApiClient.health() }
+                            onServerMessageChange(withContext(Dispatchers.IO) { ApiClient.health() })
                         } catch (e: Exception) {
-                            message = "连接失败：${e.message}"
+                            onServerMessageChange("连接失败：${e.message}")
                         }
                         isLoading = false
                     }
@@ -856,12 +871,12 @@ private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
         }
 
         // 状态消息
-        if (message.isNotBlank()) {
+        if (serverMessage.isNotBlank()) {
             Text(
-                text = message,
+                text = serverMessage,
                 fontSize = 13.sp,
-                color = if (message.contains("失败") || message.contains("异常")) Color.Red else Color.Gray,
-                modifier = Modifier.semantics { contentDescription = message }
+                color = if (serverMessage.contains("失败") || serverMessage.contains("异常")) Color.Red else Color.Gray,
+                modifier = Modifier.semantics { contentDescription = serverMessage }
             )
         }
 
