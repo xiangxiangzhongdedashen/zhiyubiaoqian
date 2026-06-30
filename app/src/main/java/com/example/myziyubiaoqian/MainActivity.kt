@@ -65,6 +65,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
 
 private const val TAG = "MainActivity"
 
@@ -677,7 +679,13 @@ private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
 
     var message by rememberSaveable { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    var serverItems by remember { mutableStateOf<List<ItemDto>>(emptyList()) }
+    var serverItemsJson by rememberSaveable { mutableStateOf("") }
+    val serverItems: List<ItemDto> = remember(serverItemsJson) {
+        if (serverItemsJson.isBlank()) emptyList()
+        else try {
+            Json.decodeFromString(ListSerializer(ItemDto.serializer()), serverItemsJson)
+        } catch (_: Exception) { emptyList() }
+    }
     val scope = rememberCoroutineScope()
 
     // 端口编辑弹窗
@@ -699,7 +707,7 @@ private fun ServerTab(serverUrl: String, onServerUrlChange: (String) -> Unit) {
             try {
                 withContext(Dispatchers.IO) { ApiClient.init(fullUrl) }
                 val items = withContext(Dispatchers.IO) { ApiClient.listItems() }
-                serverItems = items
+                serverItemsJson = Json.encodeToString(ListSerializer(ItemDto.serializer()), items)
                 message = "共 ${items.size} 个物品"
             } catch (e: Exception) {
                 message = "获取失败：${e.message}"
